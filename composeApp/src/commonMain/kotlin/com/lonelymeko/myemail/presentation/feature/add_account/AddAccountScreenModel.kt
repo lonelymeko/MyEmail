@@ -12,8 +12,8 @@ import com.lonelymeko.myemail.data.model.AccountInfo
 import com.lonelymeko.myemail.data.model.AccountInfo.Companion.createNetease163Account
 import com.lonelymeko.myemail.data.model.AccountInfo.Companion.createQqAccount
 import com.lonelymeko.myemail.data.model.AccountType
-import com.lonelymeko.myemail.data.model.createNetease163Account
-import com.lonelymeko.myemail.data.model.createQqAccount
+//import com.lonelymeko.myemail.data.model.createNetease163Account
+//import com.lonelymeko.myemail.data.model.createQqAccount
 import com.lonelymeko.myemail.data.remote.api.EmailResult
 import com.lonelymeko.myemail.domain.usecase.account.AddAccountUseCase
 import com.lonelymeko.myemail.domain.usecase.account.SetActiveAccountUseCase
@@ -92,7 +92,7 @@ class AddAccountScreenModel(
         val accountTemplate = when (type) {
             AccountType.QQ -> createQqAccount(email, "") // 密码暂时为空
             AccountType.NETEASE_163 -> createNetease163Account(email, "")
-            AccountType.GENERIC_IMAP_SMTP -> AccountInfo(emailAddress = email, passwordOrAuthCode = "", imapHost = "", imapPort = 993, smtpHost = "", smtpPort = 465, accountType = type, uniqueId = email /*临时*/)
+            AccountType.GENERIC_IMAP_SMTP -> AccountInfo(emailAddress = email, passwordOrAuthCode = "", imapHost = "", imapPort = 993, smtpHost = "", smtpPort = 465, accountType = type/*临时*/)
         }
         uiState = uiState.copy(
             imapHost = accountTemplate.imapHost,
@@ -124,7 +124,7 @@ class AddAccountScreenModel(
         }
     }
 
-    suspend fun addAccount() {
+    fun addAccount() {
         if (uiState.emailAddress.isBlank() || uiState.passwordOrAuthCode.isBlank()) {
             uiState = uiState.copy(errorMessage = "邮箱地址和授权码不能为空")
             return

@@ -21,13 +21,17 @@ import cafe.adriel.voyager.koin.getScreenModel // 用于获取 ScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import com.lonelymeko.myemail.data.model.AccountType
-
+import androidx.compose.runtime.rememberCoroutineScope // <--- 导入
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch // <--- 导入
 // 使用之前定义的 AddAccountScreenRoute
 data class AddAccountScreen(val initialEmail: String? = null) : Screen {
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
-    override fun Content() {
+    override fun Content(
+
+    ) {
         val navigator = LocalNavigator.currentOrThrow
         val screenModel = getScreenModel<AddAccountScreenModel>()
          val uiState = screenModel.uiState

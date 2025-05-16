@@ -217,6 +217,15 @@ class DesktopEmailServiceImpl(
         var store: Store? = null
         var folder: Folder? = null
         try {
+            println("Desktop: Listing all top-level folders:")
+            val defaultFolder = store?.defaultFolder
+            if (defaultFolder != null) {
+                defaultFolder.list("*").forEach { f ->
+                    println("  Folder: ${f.fullName}, Type: ${f.type}")
+                    // 特别注意看哪个文件夹的 Attributes 包含了 \Sent (如果服务器支持 SPECIAL-USE)
+                    // 或者哪个看起来像你的“已发送邮件”文件夹
+                }
+            }
             val imapProtocol = if (accountInfo.imapUseSsl && accountInfo.imapPort == 993) "imaps" else "imap"
             val imapProps = createMailProperties(accountInfo.imapHost, accountInfo.imapPort, accountInfo.imapUseSsl, "imap")
             val imapSession = Session.getInstance(imapProps)

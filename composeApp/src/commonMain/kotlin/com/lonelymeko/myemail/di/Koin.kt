@@ -1,6 +1,8 @@
 package com.lonelymeko.myemail.di
 
 
+import com.lonelymeko.myemail.data.model.AccountInfo
+import com.lonelymeko.myemail.data.model.EmailMessage
 import com.lonelymeko.myemail.data.remote.api.EmailService // commonMain interface
 import com.lonelymeko.myemail.data.repository.AccountRepository
 import com.lonelymeko.myemail.data.repository.AccountRepositoryImpl
@@ -10,6 +12,9 @@ import com.lonelymeko.myemail.domain.usecase.account.*
 import com.lonelymeko.myemail.domain.usecase.email.*
 import com.lonelymeko.myemail.presentation.feature.add_account.AddAccountScreenModel
 import com.lonelymeko.myemail.presentation.feature.bottom_nav.MainScreenModel
+import com.lonelymeko.myemail.presentation.feature.compose_email.ComposeEmailScreenModel
+import com.lonelymeko.myemail.presentation.feature.email_list.EmailListScreenModel
+import com.lonelymeko.myemail.presentation.feature.email_list.formatDateForList
 // 导入其他 ScreenModel (当你创建它们时)
 // import com.example.myemail.presentation.feature.email_list.EmailListScreenModel
 // import com.example.myemail.presentation.feature.email_detail.EmailDetailScreenModel
@@ -21,8 +26,10 @@ import kotlinx.serialization.json.Json
 import org.koin.core.context.startKoin
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.factoryOf // 用于简化 UseCase 和 ScreenModel 的工厂定义
+import org.koin.core.parameter.ParametersHolder
 import org.koin.core.qualifier.named
 import org.koin.dsl.module
+import kotlin.reflect.KClass
 
 // --- Koin 初始化函数 ---
 fun initKoin(platformSpecificModules: List<Module> = emptyList()) {
@@ -67,6 +74,7 @@ val commonModule = module {
     single(named("DefaultDispatcher")) { Dispatchers.Default }
     // Main dispatcher (UI) 通常由平台或 UI 框架 (Compose/Voyager) 处理，
     // 或者如果需要在 ScreenModel 中显式使用，可以 expect/actual 提供。
+
 }
 
 /**
@@ -160,6 +168,64 @@ val screenModelModule = module {
             getAccountsFlowUseCase = get(),
             getActiveAccountFlowUseCase = get(),
             setActiveAccountUseCase = get()
+        )
+    }
+    factory { params: ParametersHolder -> // 让 factory 显式接收 ParametersHolder
+        EmailListScreenModel(
+            account = params.get<AccountInfo>(0),      // 从参数中按索引0获取 AccountInfo
+            initialFolderName = params.get<String>(1), // 从参数中按索引1获取 String (folderName)
+            fetchEmailsUseCase = get(),                // Koin 会自动注入这些 UseCase
+            markEmailFlagsUseCase = get(),
+            deleteEmailUseCase = get()
+        )
+    }
+    factory { params: ParametersHolder ->
+        // 从 ParametersHolder 安全地获取可空参数
+        // Koin 的 params.getOrNull<Type>() 或 params.getOrNull<Type>(index) 可以用
+        // 但更通用的方式是检查参数数量
+        val replyTo: EmailMessage? = if (params.size() > 0) params.get<EmailMessage>(0) else null
+        val forward: EmailMessage? = if (params.size() > 1) params.get<EmailMessage>(1) else null
+        // 或者，如果参数总是按顺序传递（即使是null），可以直接用 getOrNull(index)
+
+        // 我们需要根据 replyTo/forward 来构造 initialTo, initialSubject, initialBody
+        var initialTo: String? = null
+        var initialSubject: String? = null
+        var initialBody: String? = null
+
+        if (replyTo != null) {
+            initialTo = replyTo.fromAddress
+            initialSubject = if (replyTo.subject?.startsWith("Re: ", ignoreCase = true) == true) {
+                replyTo.subject
+            } else {
+                "Re: ${replyTo.subject ?: ""}"
+            }
+            // 构建引用正文
+            initialBody = "\n\n--- Original Message on ${replyTo.sentDate?.formatDateForList() ?: replyTo.receivedDate?.formatDateForList()} ---\n" +
+                    "From: ${replyTo.fromAddress ?: ""}\n" +
+                    "To: ${replyTo.toList?.joinToString() ?: ""}\n" +
+                    "Subject: ${replyTo.subject ?: ""}\n\n" +
+                    (replyTo.bodyPlainText ?: replyTo.bodyHtml?.replace(Regex("<[^>]*>"), "") ?: "") // 简单的引用
+        } else if (forward != null) {
+            initialSubject = if (forward.subject?.startsWith("Fwd: ", ignoreCase = true) == true) {
+                forward.subject
+            } else {
+                "Fwd: ${forward.subject ?: ""}"
+            }
+            initialBody = "\n\n--- Forwarded Message ---\n" +
+                    "From: ${forward.fromAddress ?: ""}\n" +
+                    "Sent: ${forward.sentDate?.formatDateForList() ?: forward.receivedDate?.formatDateForList()}\n" +
+                    "To: ${forward.toList?.joinToString() ?: ""}\n" +
+                    "Subject: ${forward.subject ?: ""}\n\n" +
+                    (forward.bodyPlainText ?: forward.bodyHtml ?: "") // 转发通常包含完整内容
+        }
+
+
+        ComposeEmailScreenModel(
+            sendEmailUseCase = get(),
+            getActiveAccountFlowUseCase = get(),
+            initialTo = initialTo,
+            initialSubject = initialSubject,
+            initialBody = initialBody
         )
     }
     // 当你创建 EmailListScreenModel 等时，在这里添加它们的工厂定义
