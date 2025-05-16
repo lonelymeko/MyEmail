@@ -10,6 +10,7 @@ plugins {
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.composeHotReload)
+    alias(libs.plugins.kotlinxSerialization) // <--- 确保这一行存在且正确！
 }
 
 kotlin {
@@ -22,25 +23,7 @@ kotlin {
     
     jvm("desktop")
     
-    @OptIn(ExperimentalWasmDsl::class)
-    wasmJs {
-        moduleName = "composeApp"
-        browser {
-            val rootDirPath = project.rootDir.path
-            val projectDirPath = project.projectDir.path
-            commonWebpackConfig {
-                outputFileName = "composeApp.js"
-                devServer = (devServer ?: KotlinWebpackConfig.DevServer()).apply {
-                    static = (static ?: mutableListOf()).apply {
-                        // Serve sources to debug inside browser
-                        add(rootDirPath)
-                        add(projectDirPath)
-                    }
-                }
-            }
-        }
-        binaries.executable()
-    }
+
     
     sourceSets {
         val desktopMain by getting
@@ -77,10 +60,17 @@ kotlin {
             implementation(libs.koin.core) // Koin 核心库
             implementation(libs.koin.compose) // Koin 与 Jetpack Compose 集成 (如果使用 Compose Multiplatform)
             // Kotlin Coroutines (协程，用于异步操作)
-            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.1")
-            implementation("com.russhwolf:multiplatform-settings-no-arg:1.1.1") // 基础库
-            implementation("com.russhwolf:multiplatform-settings-serialization:1.3.0") // Kotlinx Serialization 支持 (用于存取对象)
-            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1") // JSON 序列化
+            implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.multiplatform.settings.no.arg) // 基础库
+            implementation(libs.multiplatform.settings.serialization) // Kotlinx Serialization 支持 (用于存取对象)
+            implementation(libs.kotlinx.serialization.json) // JSON 序列化
+            // Voyager (导航库, 可选但推荐)
+            implementation("cafe.adriel.voyager:voyager-navigator:1.1.0-beta03") // 核心导航
+            implementation("cafe.adriel.voyager:voyager-transitions:1.1.0-beta03") // 页面切换动画
+            implementation("cafe.adriel.voyager:voyager-koin:1.1.0-beta03")      // Voyager 与 Koin 集成
+            implementation("cafe.adriel.voyager:voyager-bottom-sheet-navigator:1.1.0-beta03") // 底部导航栏可能用到
+            implementation("cafe.adriel.voyager:voyager-tab-navigator:1.1.0-beta03") // Tab导航
+            implementation(libs.kotlinx.datetime)
 
             // SQLDelight (数据库)
 //            implementation("app.cash.sqldelight:runtime:2.0.2") // SQLDelight 运行时
