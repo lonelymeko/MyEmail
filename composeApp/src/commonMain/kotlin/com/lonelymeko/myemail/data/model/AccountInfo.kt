@@ -58,7 +58,7 @@ data class AccountInfo(
                 smtpHost = smtpHost,
                 smtpPort = smtpPort,
                 smtpUseSsl = true,
-                accountType = AccountType.GENERIC_IMAP_SMIO,
+                accountType = AccountType.GENERIC_IMAP_SMTP,
                 displayName = displayName ?: email
             )
         }

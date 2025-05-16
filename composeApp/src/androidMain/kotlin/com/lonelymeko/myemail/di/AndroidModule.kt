@@ -8,6 +8,7 @@ import com.lonelymeko.myemail.platform.AndroidEmailServiceImpl // androidMain ac
 import com.russhwolf.settings.Settings // 确保导入
 import com.russhwolf.settings.SharedPreferencesSettings // 确保导入
 import org.koin.android.ext.koin.androidContext
+import org.koin.core.qualifier.named
 import org.koin.dsl.module
 
 val androidModule = module {
@@ -18,7 +19,7 @@ val androidModule = module {
         SharedPreferencesSettings(context.getSharedPreferences(prefsName, Context.MODE_PRIVATE))
     }
     single<EmailService> {
-        AndroidEmailServiceImpl()
+        AndroidEmailServiceImpl(ioDispatcher = get(named("IODispatcher")))
     }
     // 如果你还保留了 SettingsFactory 的 expect/actual 机制，那么这里应该是：
     // single<SettingsFactory> { AndroidSettingsFactory(androidContext()) }

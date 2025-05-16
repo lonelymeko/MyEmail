@@ -6,6 +6,6 @@ import kotlinx.serialization.Serializable
 enum class AccountType {
     QQ, // QQ
     NETEASE_163,    //  网易邮箱
-    GENERIC_IMAP_SMIO   // 自定义
+    GENERIC_IMAP_SMTP   // 自定义
 
 }

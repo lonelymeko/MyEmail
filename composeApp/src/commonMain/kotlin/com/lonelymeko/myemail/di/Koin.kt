@@ -1,41 +1,92 @@
 package com.lonelymeko.myemail.di
 
-import org.koin.core.Koin
+
+import com.lonelymeko.myemail.data.remote.api.EmailService // commonMain interface
+import com.lonelymeko.myemail.data.repository.AccountRepository
+import com.lonelymeko.myemail.data.repository.AccountRepositoryImpl
+import com.lonelymeko.myemail.data.repository.EmailRepository
+import com.lonelymeko.myemail.data.repository.EmailRepositoryImpl
+import com.lonelymeko.myemail.domain.usecase.account.*
+import com.lonelymeko.myemail.domain.usecase.email.*
+import com.lonelymeko.myemail.presentation.feature.add_account.AddAccountScreenModel
+import com.lonelymeko.myemail.presentation.feature.bottom_nav.MainScreenModel
+// 导入其他 ScreenModel (当你创建它们时)
+// import com.example.myemail.presentation.feature.email_list.EmailListScreenModel
+// import com.example.myemail.presentation.feature.email_detail.EmailDetailScreenModel
+// import com.example.myemail.presentation.feature.compose_email.ComposeEmailScreenModel
+
+import com.russhwolf.settings.Settings // multiplatform-settings 接口
+import kotlinx.coroutines.Dispatchers
+import kotlinx.serialization.json.Json
 import org.koin.core.context.startKoin
 import org.koin.core.module.Module
+import org.koin.core.module.dsl.factoryOf // 用于简化 UseCase 和 ScreenModel 的工厂定义
+import org.koin.core.qualifier.named
 import org.koin.dsl.module
 
-import org.koin.core.context.startKoin
-import org.koin.dsl.module // 需要这个导入来使用 module { ... } DSL
-
-/**
- * 初始化 Koin。
- * @param platformSpecificModules 一个包含平台特定模块的列表。
- */
+// --- Koin 初始化函数 ---
 fun initKoin(platformSpecificModules: List<Module> = emptyList()) {
     startKoin {
-        // printLogger() // Koin 内置的日志记录器 (用于调试 Koin 本身)
+        // printLogger() // Koin 日志 (用于调试)
         modules(
-            commonModule + // 使用 '+' 来合并模块列表
-                    localStorageModule +
-                    repositoryModule + // 新增：仓库模块
-//                    useCaseModule +    // 新增：用例模块
-                    screenModelModule +// 新增：ScreenModel 模块 (UI逻辑)
-                    platformSpecificModules
+            commonModule,
+            localStorageModule,
+            repositoryModule,
+            useCaseModule,
+            screenModelModule
+            // 确保 platformSpecificModules 被添加到列表的末尾或合适的位置
+            // 以便平台实现可以覆盖或提供 commonMain 声明的接口/expect类
         )
+        // 在 Koin 3.2+ 中，可以直接传递模块列表给 modules()
+        // 如果 platformSpecificModules 是一个 vararg Module，可以这样：
+        // modules(listOf(commonModule, localStorageModule, ...) + platformSpecificModules)
+        // 或者如果 modules() 接受 vararg:
+        // modules(commonModule, localStorageModule, ..., *platformSpecificModules.toTypedArray())
+        // 最简单的方式是确保 platformSpecificModules 包含在传递给 modules() 的总列表中：
+        val allModules = mutableListOf(
+            commonModule,
+            localStorageModule,
+            repositoryModule,
+            // serviceModule, // EmailService 接口在 commonMain, 实现由平台提供并注入到 repositoryModule
+            useCaseModule,
+            screenModelModule
+        )
+        allModules.addAll(platformSpecificModules)
+        modules(allModules)
     }
 }
 
+
+// --- Koin 模块定义 ---
 
 /**
  * 通用工具和协程调度器
  */
 val commonModule = module {
-    // Coroutine Dispatchers (用于指定协程在哪个线程池运行)
-    // 使用 Koin 的 named qualifier 来区分不同的 Dispatcher
-    single(org.koin.core.qualifier.named("IODispatcher")) { kotlinx.coroutines.Dispatchers.IO }
-    single(org.koin.core.qualifier.named("DefaultDispatcher")) { kotlinx.coroutines.Dispatchers.Default }
-    // Main dispatcher 通常由 UI 框架 (如 Compose) 或 Voyager ScreenModel 提供，或平台自己管理
+    single(named("IODispatcher")) { Dispatchers.IO }
+    single(named("DefaultDispatcher")) { Dispatchers.Default }
+    // Main dispatcher (UI) 通常由平台或 UI 框架 (Compose/Voyager) 处理，
+    // 或者如果需要在 ScreenModel 中显式使用，可以 expect/actual 提供。
+}
+
+/**
+ * 本地存储相关的依赖 (Settings, Json)
+ */
+val localStorageModule = module {
+    // Settings 实例将由平台模块 (AndroidModule, DesktopModule 等) 直接创建并绑定为 single<Settings>
+    // commonMain 的模块不再负责创建 Settings，只负责使用它。
+    // 因此，这里不需要 single<SettingsFactory> 或 single<Settings> 的定义。
+    // Koin 会在需要 Settings 时，从平台模块中找到已注册的 Settings 实例。
+
+    // 提供 kotlinx.serialization.json.Json 实例
+    single<Json> {
+        Json {
+            isLenient = true
+            ignoreUnknownKeys = true
+            prettyPrint = false // 生产环境设为 false
+            encodeDefaults = true
+        }
+    }
 }
 
 /**
@@ -43,36 +94,76 @@ val commonModule = module {
  */
 val repositoryModule = module {
     // AccountRepository
-    // get() 会自动解析 localStorageModule 中定义的 Settings 和 Json，以及 commonModule 中的 IODispatcher
-    single<com.lonelymeko.myemail.data.repository.AccountRepository> {
-        com.lonelymeko.myemail.data.repository.AccountRepositoryImpl(
-            settings = get(),
-            json = get(),
-            ioDispatcher = get(org.koin.core.qualifier.named("IODispatcher"))
+    single<AccountRepository> {
+        AccountRepositoryImpl(
+            settings = get(), // Koin 会从平台模块中找到 Settings
+            json = get(),     // Koin 会从 localStorageModule 中找到 Json
+            ioDispatcher = get(named("IODispatcher")) // Koin 会从 commonModule 中找到 IODispatcher
         )
     }
 
     // EmailRepository
-    // EmailService 的 actual 实现将由平台模块提供并注入到这里
-    single<com.lonelymeko.myemail.data.repository.EmailRepository> {
-        com.lonelymeko.myemail.data.repository.EmailRepositoryImpl(
-            emailService = get(), // get() 会寻找平台提供的 EmailService actual 实现
-            ioDispatcher = get(org.koin.core.qualifier.named("IODispatcher"))
+    single<EmailRepository> {
+        EmailRepositoryImpl(
+            emailService = get(), // Koin 会从平台模块中找到 EmailService 的实现
+            ioDispatcher = get(named("IODispatcher"))
         )
     }
 }
 
+/**
+ * 服务层 (如果 EmailService 的 commonMain 部分有独立逻辑，不常用，因为我们用了接口)
+ * 通常 EmailService 接口在 commonMain，实现类在平台模块并直接绑定到 EmailService 接口。
+ * 所以这个 serviceModule 可能不是必需的，除非你有其他 common 服务。
+ */
+// val serviceModule = module {
+//     // EmailService 接口的实现由平台模块提供
+// }
 
 
 /**
+ * 领域层 UseCases (用例)
+ */
+val useCaseModule = module {
+    // Account UseCases
+    factoryOf(::AddAccountUseCase)
+    factoryOf(::DeleteAccountUseCase)
+    factoryOf(::GetAccountByEmailUseCase)
+    factoryOf(::GetAccountsFlowUseCase)
+    factoryOf(::GetActiveAccountFlowUseCase)
+    factoryOf(::SetActiveAccountUseCase)
+    // Email UseCases
+    factoryOf(::DeleteEmailUseCase)
+    factoryOf(::FetchEmailsUseCase)
+    factoryOf(::GetEmailDetailsUseCase)
+    factoryOf(::MarkEmailFlagsUseCase)
+    factoryOf(::SendEmailUseCase)
+    factoryOf(::TestConnectionUseCase) // 我们为账户添加时创建的
+}
+
+/**
  * 表示层 ScreenModels (UI 逻辑处理器)
- * 注意：ScreenModel 的构造通常在 UI 层通过 koinInject() 或 getScreenModel() (来自 Voyager) 完成，
- * Koin 模块在这里定义了如何创建它们。
- * 如果 ScreenModel 有导航参数，通常在 UI 层实例化时传递。
  */
 val screenModelModule = module {
-    // 示例 (需要先创建这些 ScreenModel 类)
-    // factory { params -> com.example.myemail.presentation.feature.add_account.AddAccountScreenModel(get(), get()) }
-    // factory { com.example.myemail.presentation.feature.bottom_nav.MainScreenModel(get(), get()) }
-    // ... 其他 ScreenModel 定义 ...
+    factory {
+        AddAccountScreenModel(
+            addAccountUseCase = get(),
+            setActiveAccountUseCase = get(),
+            testConnectionUseCase = get()
+            // 如果 ScreenModel 需要 CoroutineScope 或 Dispatcher，通常由 Voyager 的
+            // getScreenModel 或自定义的 ScreenModelFactory 处理，或者直接注入
+            // ioDispatcher = get(named("IODispatcher")) // 示例：如果 ScreenModel 需要它
+        )
+    }
+    factory {
+        MainScreenModel(
+            getAccountsFlowUseCase = get(),
+            getActiveAccountFlowUseCase = get(),
+            setActiveAccountUseCase = get()
+        )
+    }
+    // 当你创建 EmailListScreenModel 等时，在这里添加它们的工厂定义
+    // factory { params -> EmailListScreenModel(get(), get(), params.getOrNull(), params.getOrNull()) }
+    // factory { params -> EmailDetailScreenModel(get(), get(), params.get()) }
+    // factory { params -> ComposeEmailScreenModel(get(), params.getOrNull()) }
 }

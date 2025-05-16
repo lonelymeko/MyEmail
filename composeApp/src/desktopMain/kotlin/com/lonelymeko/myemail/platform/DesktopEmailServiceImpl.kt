@@ -479,15 +479,232 @@ class DesktopEmailServiceImpl(
             }
         }
     }
-    override suspend fun markEmailFlags(accountInfo: AccountInfo, folderName: String, messageServerIds: List<String>, markAsRead: Boolean?): EmailResult<Unit> {
-        val errorMessage = "markEmailFlags not implemented on Desktop"
-        println("DesktopEmailServiceImpl: $errorMessage")
-        return EmailResult.Error(NotImplementedException(errorMessage), errorMessage)
+    override suspend fun markEmailFlags(
+        accountInfo: AccountInfo,
+        folderName: String,
+        messageServerIds: List<String>, // 通常是 UID 列表
+        markAsRead: Boolean? // true for read, false for unread, null to not change
+        // markAsStarred: Boolean? // 示例：将来可扩展
+    ): EmailResult<Unit> = withContext(ioDispatcher) {
+        if (messageServerIds.isEmpty()) {
+            return@withContext EmailResult.Success(Unit) // 没有要操作的邮件
+        }
+        if (markAsRead == null /* && markAsStarred == null */) { // 如果所有标记参数都为null，则无操作
+            return@withContext EmailResult.Success(Unit)
+        }
+
+        var store: Store? = null
+        var folder: Folder? = null
+        try {
+            val imapProtocol = if (accountInfo.imapUseSsl && accountInfo.imapPort == 993) "imaps" else "imap"
+            val imapProps = createMailProperties(accountInfo.imapHost, accountInfo.imapPort, accountInfo.imapUseSsl, "imap")
+            val imapSession = Session.getInstance(imapProps)
+            // imapSession.debug = true
+
+            store = imapSession.getStore(imapProtocol)
+            println("Desktop: Connecting to IMAP for markEmailFlags: ${accountInfo.imapHost}")
+            store.connect(
+                accountInfo.imapHost,
+                accountInfo.imapPort,
+                accountInfo.emailAddress,
+                accountInfo.passwordOrAuthCode
+            )
+            println("Desktop: IMAP connected for markEmailFlags.")
+
+            folder = store.getFolder(folderName)
+            if (folder == null || !folder.exists()) {
+                return@withContext EmailResult.Error(MessagingException("Folder '$folderName' not found for marking flags."))
+            }
+
+            // 打开文件夹为读写模式，因为我们要修改标记
+            folder.open(Folder.READ_WRITE)
+            println("Desktop: Opened folder '$folderName' in READ_WRITE mode for marking flags.")
+
+            val uidsToProcess = messageServerIds.mapNotNull { it.toLongOrNull() }.toLongArray()
+            if (uidsToProcess.isEmpty() && messageServerIds.isNotEmpty()) {
+                // 如果传入的 IDs 都不是有效的 Long (UID)，则报错或忽略
+                println("Desktop: No valid UIDs provided for marking flags.")
+                // 可以选择返回错误或成功（因为没有有效操作）
+                // return@withContext EmailResult.Error(IllegalArgumentException("Invalid UIDs provided."))
+            }
+
+            if (uidsToProcess.isNotEmpty() && folder is UIDFolder) {
+                val messages = folder.getMessagesByUID(uidsToProcess)
+                if (messages.isEmpty()) {
+                    println("Desktop: No messages found for UIDs: ${uidsToProcess.joinToString()}")
+                    // 可能部分 UID 无效，或邮件已被删除
+                }
+
+                val flagsToSet = Flags()
+                val flagsToClear = Flags()
+
+                markAsRead?.let { read ->
+                    if (read) {
+                        flagsToSet.add(Flags.Flag.SEEN)
+                    } else {
+                        flagsToClear.add(Flags.Flag.SEEN)
+                    }
+                }
+                // markAsStarred?.let { starred ->
+                //     if (starred) {
+                //         flagsToSet.add(Flags.Flag.FLAGGED)
+                //     } else {
+                //         flagsToClear.add(Flags.Flag.FLAGGED)
+                //     }
+                // }
+
+                if (messages.isNotEmpty()) {
+                    // 设置标记 (true 表示设置，false 表示清除)
+                    // folder.setFlags(messages, flagsToSet, true) // 会添加标记，不清除已有的其他标记
+                    // folder.setFlags(messages, flagsToClear, false) // 会清除标记
+
+//                    // 更精细的控制：合并 flags
+//                    for (msg in messages) {
+//                        val currentFlags = msg.flags
+//                        val newFlags = Flags(currentFlags) // 复制当前标记
+//                        if (flagsToSet.contains(Flags.Flag.SEEN)) newFlags.add(Flags.Flag.SEEN)
+//                        if (flagsToClear.contains(Flags.Flag.SEEN)) newFlags.remove(Flags.Flag.SEEN)
+//                        // ... 其他标记类似处理 ...
+//                        if (!newFlags.equals(currentFlags)) { // 只有当标记实际改变时才设置
+//                            msg.flags = newFlags
+//                        }
+//                    }
+                    // 或者，如果只想简单地设置/清除特定标记而不关心其他标记：
+                     if (flagsToSet.systemFlags.isNotEmpty()) { // 检查是否有要设置的系统标记
+                        folder.setFlags(messages, flagsToSet, true)
+                     }
+                     if (flagsToClear.systemFlags.isNotEmpty()) {
+                        folder.setFlags(messages, flagsToClear, false)
+                     }
+                    // **注意**: setFlags(messages, Flags, boolean) 会替换所有匹配的标记，
+                    // 如果只想添加/移除特定标记而不影响其他标记，需要更小心。
+                    // 通常的做法是获取现有标记，修改，然后设置回去，如上面的 for 循环。
+                    // 或者，对于 SEEN 标记，更简单的方式可能是：
+                    // folder.setFlags(messages, Flags(Flags.Flag.SEEN), markAsRead /* true to set, false to clear */)
+                    // 但这只适用于单个标记的简单设置/清除。
+
+                    println("Desktop: Flags updated for ${messages.size} messages.")
+                }
+
+            } else if (uidsToProcess.isNotEmpty()) {
+                // 如果文件夹不支持 UIDFolder，则无法通过 UID 操作，这是一个问题
+                return@withContext EmailResult.Error(MessagingException("Folder does not support UID operations."))
+            }
+
+            EmailResult.Success(Unit)
+
+        } catch (e: AuthenticationFailedException) {
+            EmailResult.Error(e, "IMAP认证失败: ${e.message}")
+        } catch (e: FolderNotFoundException) {
+            EmailResult.Error(e, "文件夹 '$folderName' 未找到: ${e.message}")
+        } catch (e: ReadOnlyFolderException) {
+            EmailResult.Error(e, "文件夹 '$folderName' 是只读的，无法修改标记: ${e.message}")
+        } catch (e: MessagingException) {
+            EmailResult.Error(e, "标记邮件时发生消息错误: ${e.message}")
+        } catch (e: Exception) {
+            EmailResult.Error(e, "标记邮件时发生未知错误: ${e.message}")
+        } finally {
+            try {
+                // 关闭文件夹时，如果以 READ_WRITE 打开，第二个参数 true 会 expunge 已删除邮件
+                // 这里我们只是修改标记，所以用 false
+                folder?.close(false)
+                store?.close()
+                println("Desktop: IMAP resources closed for markEmailFlags.")
+            } catch (e: MessagingException) {
+                println("Desktop: Error closing IMAP resources for flags: ${e.message}")
+            }
+        }
     }
-    override suspend fun deleteEmails(accountInfo: AccountInfo, folderName: String, messageServerIds: List<String>): EmailResult<Unit> {
-        val errorMessage = "deleteEmails not implemented on Desktop"
-        println("DesktopEmailServiceImpl: $errorMessage")
-        return EmailResult.Error(NotImplementedException(errorMessage), errorMessage)
+    override suspend fun deleteEmails(
+        accountInfo: AccountInfo,
+        folderName: String,
+        messageServerIds: List<String> // UID 列表
+    ): EmailResult<Unit> = withContext(ioDispatcher) {
+        if (messageServerIds.isEmpty()) {
+            return@withContext EmailResult.Success(Unit) // 没有要操作的邮件
+        }
+
+        var store: Store? = null
+        var folder: Folder? = null
+        // 控制是否在关闭文件夹时执行 expunge (永久删除)
+        // 对于“删除”操作，通常我们希望立即 expunge 或让服务器处理（如移到垃圾箱）
+        val expungeOnClose = true
+
+        try {
+            val imapProtocol = if (accountInfo.imapUseSsl && accountInfo.imapPort == 993) "imaps" else "imap"
+            val imapProps = createMailProperties(accountInfo.imapHost, accountInfo.imapPort, accountInfo.imapUseSsl, "imap")
+            val imapSession = Session.getInstance(imapProps)
+            // imapSession.setDebug(true)
+
+            store = imapSession.getStore(imapProtocol)
+            println("Desktop: Connecting to IMAP for deleteEmails: ${accountInfo.imapHost}")
+            store.connect(
+                accountInfo.imapHost,
+                accountInfo.imapPort,
+                accountInfo.emailAddress,
+                accountInfo.passwordOrAuthCode
+            )
+            println("Desktop: IMAP connected for deleteEmails.")
+
+            folder = store.getFolder(folderName)
+            if (folder == null || !folder.exists()) {
+                return@withContext EmailResult.Error(FolderNotFoundException(folder,"Folder '$folderName' not found for deleting emails."))
+            }
+
+            // 需要读写权限来设置 DELETED 标记并可能执行 expunge
+            folder.open(Folder.READ_WRITE)
+            println("Desktop: Opened folder '$folderName' in READ_WRITE mode for deleting emails.")
+
+            val uidsToProcess = messageServerIds.mapNotNull { it.toLongOrNull() }.toLongArray()
+            if (uidsToProcess.isEmpty() && messageServerIds.isNotEmpty()) {
+                println("Desktop: No valid UIDs provided for deleting emails.")
+                // 可以选择返回错误或成功（因为没有有效操作）
+            }
+
+            if (uidsToProcess.isNotEmpty() && folder is UIDFolder) {
+                val messages = folder.getMessagesByUID(uidsToProcess)
+                if (messages.isNotEmpty()) {
+                    // 将邮件标记为 \Deleted
+                    folder.setFlags(messages, Flags(Flags.Flag.DELETED), true)
+                    println("Desktop: Marked ${messages.size} messages as DELETED in folder '$folderName'.")
+
+                    // 如果不希望依赖 close(true) 来 expunge，可以在这里显式调用
+                    // folder.expunge()
+                    // println("Desktop: Expunged messages from folder '$folderName'.")
+                    // 注意: expunge() 会移除所有标记为 DELETED 的邮件，不仅仅是我们刚标记的这些
+
+                } else {
+                    println("Desktop: No messages found for UIDs to delete in folder '$folderName': ${uidsToProcess.joinToString()}")
+                }
+            } else if (uidsToProcess.isNotEmpty()) {
+                // 文件夹不支持 UIDFolder，这是一个问题，因为 messageServerIds 预期是 UIDs
+                return@withContext EmailResult.Error(MessagingException("Folder '$folderName' does not support UID operations for deletion."))
+            }
+
+            EmailResult.Success(Unit)
+
+        } catch (e: AuthenticationFailedException) {
+            EmailResult.Error(e, "IMAP认证失败: ${e.message}")
+        } catch (e: FolderNotFoundException) {
+            EmailResult.Error(e, "文件夹 '$folderName' 未找到: ${e.message}")
+        } catch (e: ReadOnlyFolderException) {
+            EmailResult.Error(e, "文件夹 '$folderName' 是只读的，无法删除邮件: ${e.message}")
+        } catch (e: MessagingException) {
+            EmailResult.Error(e, "删除邮件时发生消息错误: ${e.message}")
+        } catch (e: Exception) {
+            EmailResult.Error(e, "删除邮件时发生未知错误: ${e.message}")
+        } finally {
+            try {
+                // 当关闭文件夹时，如果 expungeOnClose 为 true,
+                // 服务器会永久删除所有在该会话中被标记为 \Deleted 且在该文件夹中的邮件。
+                // 某些服务器可能会将这些邮件移动到“已删除邮件”或“垃圾箱”文件夹。
+                folder?.close(expungeOnClose)
+                store?.close()
+                println("Desktop: IMAP resources closed for deleteEmails. Expunged on close: $expungeOnClose for folder '$folderName'")
+            } catch (e: MessagingException) {
+                println("Desktop: Error closing IMAP resources for delete: ${e.message}")
+            }
+        }
     }
 }
 
@@ -608,7 +825,93 @@ fun main() = runBlocking {
                 }
             }
             println("-----------------------------------------\n")
+            var uidsToMark: List<String>? = null
+            if (connectionResult is EmailResult.Success) {
+                println("--- Testing Fetch Emails to get UIDs for Marking ---")
+                emailService.fetchEmails(myTestAccount, "INBOX", page = 1, pageSize = 2) // 获取前2封
+                    .collect { result ->
+                        when (result) {
+                            is EmailResult.Success -> {
+                                if (result.data.isNotEmpty()) {
+                                    uidsToMark = result.data.map { it.messageServerId }
+                                    println("Fetch for Marking: SUCCESS, UIDs to mark: $uidsToMark")
+                                } else {
+                                    println("No emails found in INBOX to mark.")
+                                }
+                            }
+                            is EmailResult.Error -> println("Fetch for Marking: FAILED - ${result.message}")
+                        }
+                    }
+                println("------------------------------------------------\n")
+            }
+
+            if (uidsToMark != null && uidsToMark!!.isNotEmpty()) {
+                println("--- Testing Mark Email As Read (Desktop) ---")
+                // 假设我们将第一封标记为已读，第二封标记为未读 (如果存在第二封)
+                val markReadResult = emailService.markEmailFlags(myTestAccount, "INBOX", listOf(uidsToMark!!.first()), markAsRead = true)
+                when (markReadResult) {
+                    is EmailResult.Success -> println("Mark as Read Test: SUCCESS for ${uidsToMark!!.first()}")
+                    is EmailResult.Error -> println("Mark as Read Test: FAILED - ${markReadResult.message}")
+                }
+
+                if (uidsToMark!!.size > 1) {
+                    println("\n--- Testing Mark Email As Unread (Desktop) ---")
+                    val markUnreadResult = emailService.markEmailFlags(myTestAccount, "INBOX", listOf(uidsToMark!![1]), markAsRead = false)
+                    when (markUnreadResult) {
+                        is EmailResult.Success -> println("Mark as Unread Test: SUCCESS for ${uidsToMark!![1]}")
+                        is EmailResult.Error -> println("Mark as Unread Test: FAILED - ${markUnreadResult.message}")
+                    }
+                }
+                println("------------------------------------------\n")
+                println("!!! PLEASE CHECK YOUR EMAIL CLIENT TO VERIFY THE READ/UNREAD STATUS !!!")
+            }
         }
+    println("----------------删除测试------------------\n")
+
+    // --- 获取一些邮件的UID用于删除测试 ---
+    var uidsToDelete: List<String>? = null
+    println("--- Testing Fetch Emails to get UIDs for Deletion (Desktop) ---")
+    emailService.fetchEmails(myTestAccount, "INBOX", page = 1, pageSize = 2) // 获取最新的两封
+        .collect { result ->
+            when (result) {
+                is EmailResult.Success -> {
+                    if (result.data.isNotEmpty()) {
+                        uidsToDelete = result.data.map { it.messageServerId }
+                        println("Fetch for Deletion: SUCCESS, UIDs found: $uidsToDelete")
+                    } else {
+                        println("No emails found in INBOX to select for deletion.")
+                    }
+                }
+                is EmailResult.Error -> println("Fetch for Deletion: FAILED - ${result.message}")
+            }
+        }
+    println("----------------------------------------------------------\n")
+
+
+    if (uidsToDelete != null && uidsToDelete!!.isNotEmpty()) {
+        val uidsToActuallyDelete = listOf(uidsToDelete!!.first()) // 只删除获取到的第一封，以减少风险
+
+        println("--- Testing Delete Emails (Desktop) ---")
+        println("WARNING: About to mark emails for deletion (UIDs: $uidsToActuallyDelete) from INBOX.")
+        println("         These emails might be permanently deleted or moved to Trash depending on server and expunge settings.")
+        println("         Press Enter to continue, or Ctrl+C to abort...")
+        // readlnOrNull() // 在实际测试中，可以取消注释这一行以进行手动确认
+
+        val deleteResult = emailService.deleteEmails(myTestAccount, "INBOX", uidsToActuallyDelete)
+        when (deleteResult) {
+            is EmailResult.Success -> println("Delete Emails Test: SUCCESS for UIDs: $uidsToActuallyDelete")
+            is EmailResult.Error -> {
+                println("Delete Emails Test: FAILED - ${deleteResult.message} (Exception: ${deleteResult.exception})")
+                deleteResult.exception.printStackTrace()
+            }
+        }
+        println("-------------------------------------\n")
+        println("!!! CHECK YOUR EMAIL CLIENT OR WEBPAGE (INBOX and TRASH/DELETED ITEMS) TO VERIFY THE DELETION !!!")
+    } else {
+        println("No UIDs selected for deletion test.")
     }
+}
+
+
 
 
