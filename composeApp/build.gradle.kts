@@ -1,9 +1,7 @@
+
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
-import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import org.jetbrains.kotlin.gradle.targets.js.webpack.KotlinWebpackConfig
-
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidApplication)
@@ -17,12 +15,16 @@ kotlin {
     androidTarget {
         @OptIn(ExperimentalKotlinGradlePluginApi::class)
         compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_11)
+            jvmTarget.set(JvmTarget.JVM_17)
         }
     }
     
-    jvm("desktop")
-    
+    jvm("desktop"){
+        compilations.all {
+            kotlinOptions.jvmTarget = "17"
+        }
+    }
+
 
     
     sourceSets {
@@ -63,7 +65,7 @@ kotlin {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.multiplatform.settings.no.arg) // 基础库
             implementation(libs.multiplatform.settings.serialization) // Kotlinx Serialization 支持 (用于存取对象)
-            implementation(libs.kotlinx.serialization.json) // JSON 序列化
+            implementation(libs.kotlinx.serialization.json)
             // Voyager (导航库, 可选但推荐)
             implementation("cafe.adriel.voyager:voyager-navigator:1.1.0-beta03") // 核心导航
             implementation("cafe.adriel.voyager:voyager-transitions:1.1.0-beta03") // 页面切换动画
@@ -71,7 +73,6 @@ kotlin {
             implementation("cafe.adriel.voyager:voyager-bottom-sheet-navigator:1.1.0-beta03") // 底部导航栏可能用到
             implementation("cafe.adriel.voyager:voyager-tab-navigator:1.1.0-beta03") // Tab导航
             implementation(libs.kotlinx.datetime)
-
             // SQLDelight (数据库)
 //            implementation("app.cash.sqldelight:runtime:2.0.2") // SQLDelight 运行时
         }
@@ -91,11 +92,11 @@ kotlin {
 }
 
 android {
-    namespace = "org.example.project"
+    namespace = "com.lonelymeko.myemail"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {
-        applicationId = "org.example.project"
+        applicationId = "com.lonelymeko.myemail"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
@@ -103,7 +104,12 @@ android {
     }
     packaging {
         resources {
-            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            // 排除重复的 LICENSE.md 文件
+            excludes += "META-INF/LICENSE.md"
+            excludes += "META-INF/LICENSE-notice.md"
+            excludes += "META-INF/NOTICE.md"
+            // 如果需要排除其他文件，可以继续添加
+            excludes += "META-INF/*.kotlin_module"
         }
     }
     buildTypes {
@@ -112,10 +118,10 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
-}
+
 
 dependencies {
     debugImplementation(compose.uiTooling)
@@ -123,12 +129,12 @@ dependencies {
 
 compose.desktop {
     application {
-        mainClass = "org.example.project.MainKt"
+        mainClass = "com.lonelymeko.myemail.MainKt"
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
-            packageName = "org.example.project"
+            packageName = "com.lonelymeko.myemail"
             packageVersion = "1.0.0"
         }
     }
-}
+}}

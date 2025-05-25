@@ -1,21 +1,13 @@
-package com.lonelymeko.myemail.presentation.feature.bottom_nav
+package com.lonelymeko.myemail.presentation.feature.bottom_nav // 你的包名
 
-import androidx.compose.runtime.getValue // 这个导入在这个文件中似乎没有直接使用
-import androidx.compose.runtime.mutableStateOf // 这个导入在这个文件中似乎没有直接使用
-import androidx.compose.runtime.setValue // 这个导入在这个文件中似乎没有直接使用
 import cafe.adriel.voyager.core.model.ScreenModel
-import cafe.adriel.voyager.core.model.screenModelScope
+import cafe.adriel.voyager.core.model.screenModelScope // 正确的导入
 import com.lonelymeko.myemail.data.model.AccountInfo
 import com.lonelymeko.myemail.domain.usecase.account.GetAccountsFlowUseCase
 import com.lonelymeko.myemail.domain.usecase.account.GetActiveAccountFlowUseCase
 import com.lonelymeko.myemail.domain.usecase.account.SetActiveAccountUseCase
-// import kotlinx.coroutines.coroutineScope // 这个导入如果下面的 init 块被注释掉，则不需要
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.onEach // <--- 添加这个导入用于 Flow 日志
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-
-// data class MainScreenUiState(...) // 你没有使用这个合并的 UiState，所以可以暂时注释或删除
 
 class MainScreenModel(
     private val getAccountsFlowUseCase: GetAccountsFlowUseCase,
@@ -24,39 +16,51 @@ class MainScreenModel(
 ) : ScreenModel {
 
     init {
-        println("MainScreenModel: INIT") // <--- 添加初始化日志
+        println("MainScreenModel: INIT - ScreenModel instance created.")
+        // 我们将依赖 AccountRepositoryImpl 在添加第一个账户时设置活动账户的逻辑，
+        // 或者依赖用户手动选择。
+        // activeAccountState 会通过 getActiveAccountFlowUseCase() 自动更新。
+        // accountsState 也会通过 getAccountsFlowUseCase() 自动更新。
+        // 移除之前在 init 中尝试设置活动账户的 launch 块，因为它可能在 stateIn 的 Flow 准备好之前执行。
     }
 
-    // 使用 stateIn 将 Flow 转换为 StateFlow，以便 Compose 可以观察
-    val accountsState = getAccountsFlowUseCase()
-        .onEach { accounts -> // <--- 添加日志来观察 accountsState 的变化
-            println("MainScreenModel: accountsState emitting ${accounts.size} accounts. First: ${accounts.firstOrNull()?.emailAddress}")
+    val accountsState: StateFlow<List<AccountInfo>> = getAccountsFlowUseCase()
+        .onEach { accounts ->
+            println("MainScreenModel: accountsState received ${accounts.size} accounts. First: ${accounts.firstOrNull()?.emailAddress}")
         }
         .stateIn(
-            scope = screenModelScope, // <--- 确保使用 screenModelScope
-            started = SharingStarted.WhileSubscribed(5000),
+            scope = screenModelScope,
+            started = SharingStarted.WhileSubscribed(5000L), // 推荐加上 L 表示 Long
             initialValue = emptyList()
         )
 
-    val activeAccountState = getActiveAccountFlowUseCase()
-        .onEach { activeAcc -> // <--- 添加日志来观察 activeAccountState 的变化
-            println("MainScreenModel: activeAccountState emitting: ${activeAcc?.emailAddress}")
+    val activeAccountState: StateFlow<AccountInfo?> = getActiveAccountFlowUseCase()
+        .onEach { activeAcc ->
+            println("MainScreenModel: activeAccountState received: ${activeAcc?.emailAddress}")
         }
         .stateIn(
-            scope = screenModelScope, // <--- 确保使用 screenModelScope
-            started = SharingStarted.WhileSubscribed(5000),
+            scope = screenModelScope,
+            started = SharingStarted.WhileSubscribed(5000L),
             initialValue = null
         )
 
     fun onSwitchAccount(account: AccountInfo) {
-        println("MainScreenModel: onSwitchAccount called for ${account.emailAddress}") // <--- 添加日志
+        println("MainScreenModel: onSwitchAccount called for ${account.emailAddress}")
+        // 避免重复设置同一个活动账户
+        if (activeAccountState.value?.emailAddress == account.emailAddress) {
+            println("MainScreenModel: Account ${account.emailAddress} is already active. Skipping setActiveAccountUseCase.")
+            return
+        }
         screenModelScope.launch {
-            val result = setActiveAccountUseCase(account.emailAddress)
-            println("MainScreenModel: setActiveAccountUseCase result for ${account.emailAddress}: $result") // <--- 添加日志
+            val result = setActiveAccountUseCase(account.emailAddress) // UseCase 期望 String?
+            result.fold(
+                onSuccess = { println("MainScreenModel: setActiveAccountUseCase SUCCESS for ${account.emailAddress}") },
+                onFailure = { error -> println("MainScreenModel: setActiveAccountUseCase FAILED for ${account.emailAddress}: ${error.message}") }
+            )
         }
     }
 
-    override fun onDispose() { // <--- 添加 onDispose 日志
+    override fun onDispose() {
         super.onDispose()
         println("MainScreenModel: DISPOSED")
     }

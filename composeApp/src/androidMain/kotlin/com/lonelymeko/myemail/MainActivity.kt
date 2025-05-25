@@ -1,4 +1,4 @@
-package org.example.project
+package com.lonelymeko.myemail
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity

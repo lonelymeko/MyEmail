@@ -9,6 +9,7 @@ import cafe.adriel.voyager.core.model.screenModelScope
 
 
 import com.lonelymeko.myemail.data.model.AccountInfo
+import com.lonelymeko.myemail.data.model.AccountInfo.Companion.createGenericImapSmtpAccount
 import com.lonelymeko.myemail.data.model.AccountInfo.Companion.createNetease163Account
 import com.lonelymeko.myemail.data.model.AccountInfo.Companion.createQqAccount
 import com.lonelymeko.myemail.data.model.AccountType
@@ -92,7 +93,14 @@ class AddAccountScreenModel(
         val accountTemplate = when (type) {
             AccountType.QQ -> createQqAccount(email, "") // 密码暂时为空
             AccountType.NETEASE_163 -> createNetease163Account(email, "")
-            AccountType.GENERIC_IMAP_SMTP -> AccountInfo(emailAddress = email, passwordOrAuthCode = "", imapHost = "", imapPort = 993, smtpHost = "", smtpPort = 465, accountType = type/*临时*/)
+            AccountType.GENERIC_IMAP_SMTP -> createGenericImapSmtpAccount(
+                email = email,
+                password = "",
+                imapHost = "mail.${email.substringAfter('@')}" ,
+                imapPort = 993,
+                smtpHost = "mail.${email.substringAfter('@')}",
+                smtpPort = 465,
+            )
         }
         uiState = uiState.copy(
             imapHost = accountTemplate.imapHost,

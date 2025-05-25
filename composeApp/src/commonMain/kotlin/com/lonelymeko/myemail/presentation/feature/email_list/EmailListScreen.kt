@@ -5,17 +5,28 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Drafts // 未读图标
-import androidx.compose.material.icons.filled.MailOutline // 已读图标
-import androidx.compose.material.icons.filled.MarkEmailRead
-import androidx.compose.material.icons.filled.MarkEmailUnread
-import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.Drafts
+import androidx.compose.material.icons.filled.MailOutline
+// 导入 Material 3 的下拉刷新相关组件
+// 注意：这些导入路径是基于常见的 M3 实验性 API 模式，如果官方 API 不同，请调整
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox // 假设的 M3 下拉刷新容器
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState // 假设的 M3 状态 hoist
+import androidx.compose.material3.CircularProgressIndicator // M3 加载指示器
+import androidx.compose.material3.Divider
+import androidx.compose.material3.ExperimentalMaterial3Api // M3 实验性 API 注解
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.material3.Button // M3 Button
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -23,23 +34,25 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
-import cafe.adriel.voyager.koin.getScreenModel // 用于获取 ScreenModel
+import cafe.adriel.voyager.koin.getScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import com.lonelymeko.myemail.data.model.AccountInfo
 import com.lonelymeko.myemail.data.model.EmailMessage
+import com.lonelymeko.myemail.presentation.feature.email_detail.EmailDetailScreen
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.mapNotNull // 使用 mapNotNull 避免 nullable lastVisibleItem
+import kotlinx.coroutines.flow.collect // 手动 collect
+import kotlinx.coroutines.flow.filter // 用于过滤
+import kotlinx.coroutines.flow.map
 import kotlinx.datetime.Clock
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toLocalDateTime
-import kotlinx.datetime.format.*
+import kotlinx.datetime.format.Padding
 import kotlinx.datetime.format.char
-import org.koin.core.context.GlobalContext.get
+import kotlinx.datetime.toLocalDateTime
 import org.koin.core.parameter.parametersOf
 import kotlin.time.Duration.Companion.days
-import androidx.compose.material3.SnackbarDuration
-import com.lonelymeko.myemail.presentationfeature.email_detail.EmailDetailScreen
-import org.koin.core.parameter.ParametersHolder
 
 // 在文件顶部或一个伴生对象中定义格式化器，以便复用
 private val TIME_FORMATTER_FOR_LIST = LocalDateTime.Format {
@@ -55,59 +68,119 @@ private val DATE_FORMATTER_FOR_LIST = LocalDateTime.Format {
 }
 
 
-// Screen 接收 AccountInfo 和 folderName
-data class EmailListScreen(val account: AccountInfo, val folderName: String) : Screen {
+data class EmailListScreen(
+    val account: AccountInfo,
+    val folderName: String
+) : Screen {
+    override val key: String = "EmailListScreen_${account.emailAddress}_${folderName}"
 
-    @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+    @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class) // 添加 ExperimentalMaterial3Api
     @Composable
     override fun Content() {
-        val navigator = LocalNavigator.currentOrThrow
-        // 为 ScreenModel 提供构造函数参数
+        val navigator = LocalNavigator.currentOrThrow.parent
         val screenModel = getScreenModel<EmailListScreenModel>(
-            parameters = { parametersOf(account, folderName) }, // account 是第0个, folderName 是第1个
-//            tag = "${account.emailAddress}_${folderName}",
-
+            parameters = { parametersOf(account, folderName) }
         )
+
         val uiState = screenModel.uiState
         val snackbarHostState = remember { SnackbarHostState() }
 
+        // Material 3 下拉刷新状态
+        // isRefreshing 应该直接来自 uiState.isRefreshing
+        // onRefresh 调用 screenModel.refreshEmails()
+        val pullToRefreshState = rememberPullToRefreshState() // M3 的 state hoist
+
         LaunchedEffect(uiState.errorMessage) {
             uiState.errorMessage?.let {
-                snackbarHostState.showSnackbar(it, duration = SnackbarDuration.Short)
+                snackbarHostState.showSnackbar(message = it, duration = SnackbarDuration.Short)
                 screenModel.consumeErrorMessage()
             }
         }
 
-        Scaffold( // EmailListScreen 可能不需要自己的 Scaffold，如果它是 Tab 的内容
-            snackbarHost = { SnackbarHost(snackbarHostState) }
+        val listState = rememberLazyListState()
+        LaunchedEffect(listState, uiState.canLoadMore, uiState.isLoading, uiState.isRefreshing, uiState.emails.size) {
+            snapshotFlow { listState.layoutInfo.visibleItemsInfo }
+                .mapNotNull { it.lastOrNull() }
+                .distinctUntilChanged { old, new -> old.index == new.index }
+                .filter { lastVisibleItem -> // 将判断条件移到 filter 中
+                    lastVisibleItem.index >= uiState.emails.size - 1 - 5 && // 阈值
+                            uiState.canLoadMore &&
+                            !uiState.isLoading &&
+                            !uiState.isRefreshing &&
+                            uiState.emails.isNotEmpty() // 确保列表不为空时才尝试加载更多
+                }
+                .collect {
+                    println("EmailListScreen: Reached near end of list, attempting to load more.")
+                    screenModel.loadMoreEmails()
+                }
+        }
+
+        Scaffold(
+            snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
         ) { paddingValues ->
-            Column(modifier = Modifier.padding(paddingValues).fillMaxSize()) {
-                if (uiState.isLoading) {
+            // 使用 Material 3 的 PullToRefreshBox
+            PullToRefreshBox(
+                state = pullToRefreshState, // 传递 M3 的 state
+                isRefreshing = uiState.isRefreshing, // 控制指示器的显示
+                onRefresh = {
+                    println("EmailListScreen: M3 PullToRefreshBox triggered for ${account.emailAddress}/$folderName")
+                    screenModel.refreshEmails()
+                },
+                modifier = Modifier.padding(paddingValues).fillMaxSize()
+                // indicator = { PullToRefreshDefaults.Indicator(state = pullToRefreshState) } // M3 指示器，通常 PullToRefreshBox 默认会处理
+            ) {
+                // PullToRefreshBox 的内容槽位
+                if (uiState.isLoading && uiState.emails.isEmpty() && !uiState.isRefreshing) { // 初始加载
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator()
+                        Text("正在加载邮件...", modifier = Modifier.padding(top = 60.dp))
                     }
-                } else if (uiState.emails.isEmpty()) {
+                } else if (uiState.emails.isEmpty() && !uiState.isLoading && !uiState.isRefreshing) { // 无邮件
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("文件夹 '${uiState.folderName}' 中没有邮件")
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("文件夹 '${uiState.folderName}' 中没有邮件")
+                            Spacer(Modifier.height(8.dp))
+                            Button(onClick = { screenModel.refreshEmails() }) { Text("尝试刷新") }
+                        }
                     }
-                } else {
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(uiState.emails, key = { it.messageServerId }) { email ->
-                            EmailListItem( // 使用之前定义的 EmailListItem
+                } else { // 显示邮件列表
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize() // LazyColumn 应该填充 PullToRefreshBox 的内容区域
+                    ) {
+                        itemsIndexed(uiState.emails, key = { _, email -> email.messageServerId }) { _, email ->
+                            EmailListItem(
                                 email = email,
-                                isSelected = false, // 简化，暂无多选
+                                isSelected = false,
                                 onEmailClick = {
-                                    navigator.push(
-                                        EmailDetailScreen(
-                                            account,
-                                            folderName,
-                                            email.messageServerId
-                                        )
+                                    navigator?.push(
+                                        EmailDetailScreen(account, folderName, email.messageServerId)
                                     )
                                 },
-                                onEmailLongClick = { /* 暂无长按操作 */ }
+                                onEmailLongClick = { /* TODO */ }
                             )
                             Divider()
+                        }
+
+                        // 加载更多指示器
+                        if (uiState.isLoading && uiState.emails.isNotEmpty() && !uiState.isRefreshing) {
+                            item {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("正在加载更多...")
+                                }
+                            }
+                        } else if (uiState.canLoadMore && uiState.emails.isNotEmpty() && !uiState.isLoading && !uiState.isRefreshing) {
+                            // 可以考虑放一个“点击加载更多”的按钮，如果不想完全依赖自动滚动加载
+                            item {
+                                Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                    // Text("已加载全部") // 或者什么都不显示，或者一个小的分隔符
+                                }
+                            }
                         }
                     }
                 }

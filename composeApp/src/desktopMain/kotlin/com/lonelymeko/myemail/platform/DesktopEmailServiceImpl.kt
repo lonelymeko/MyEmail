@@ -723,8 +723,8 @@ fun main() = runBlocking {
     // !!! 替换为你的真实邮箱和授权码进行测试 !!!
     // !!! 不要将真实凭据提交到版本控制系统 !!!
     val myTestAccount = AccountInfo(
-        emailAddress = "2477183238@qq.com",       // 替换
-        passwordOrAuthCode = "xpifijkejiirdiaf",           // 替换
+        emailAddress = "@qq.com",       // 替换
+        passwordOrAuthCode = "",           // 替换
         imapHost = "imap.qq.com",                   // 替换
         imapPort = 993,
         imapUseSsl = true,

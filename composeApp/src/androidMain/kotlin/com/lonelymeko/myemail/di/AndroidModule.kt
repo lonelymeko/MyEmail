@@ -2,8 +2,8 @@ package com.lonelymeko.myemail.di
 
 import android.content.Context
 import com.lonelymeko.myemail.data.remote.api.EmailService
+import com.lonelymeko.myemail.platform.AndroidEmailServiceImpl
 
-import com.lonelymeko.myemail.platform.AndroidEmailServiceImpl // androidMain actual
 
 import com.russhwolf.settings.Settings // 确保导入
 import com.russhwolf.settings.SharedPreferencesSettings // 确保导入
@@ -22,6 +22,6 @@ val androidModule = module {
         AndroidEmailServiceImpl(ioDispatcher = get(named("IODispatcher")))
     }
     // 如果你还保留了 SettingsFactory 的 expect/actual 机制，那么这里应该是：
-    // single<SettingsFactory> { AndroidSettingsFactory(androidContext()) }
+//     single<SettingsFactory> { AndroidSettingsFactory(androidContext()) }
 
 }

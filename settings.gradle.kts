@@ -3,8 +3,8 @@ enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
 pluginManagement {
     repositories {
-        maven("https://mvnrepository.com")
-//       maven("https://mirrors.tencent.com/nexus/repository/maven-public/")
+//        maven("https://mvnrepository.com")
+       maven("https://mirrors.tencent.com/nexus/repository/maven-public/")
         maven("https://maven.aliyun.com/repository/public")
         mavenCentral()
         google()
@@ -23,7 +23,7 @@ pluginManagement {
 
 dependencyResolutionManagement {
     repositories {
-//       maven("https://mirrors.tencent.com/nexus/repository/maven-public/")
+       maven("https://mirrors.tencent.com/nexus/repository/maven-public/")
         maven("https://mvnrepository.com")
         mavenCentral()
         google()

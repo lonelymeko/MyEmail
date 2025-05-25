@@ -3,7 +3,7 @@ package com.lonelymeko.myemail.di
 
 import com.lonelymeko.myemail.data.model.AccountInfo
 import com.lonelymeko.myemail.data.model.EmailMessage
-import com.lonelymeko.myemail.data.remote.api.EmailService // commonMain interface
+
 import com.lonelymeko.myemail.data.repository.AccountRepository
 import com.lonelymeko.myemail.data.repository.AccountRepositoryImpl
 import com.lonelymeko.myemail.data.repository.EmailRepository
@@ -16,9 +16,9 @@ import com.lonelymeko.myemail.presentation.feature.compose_email.ComposeEmailScr
 import com.lonelymeko.myemail.presentation.feature.email_list.EmailListScreenModel
 import com.lonelymeko.myemail.presentation.feature.email_list.formatDateForList
 // 导入其他 ScreenModel (当你创建它们时)
-// import com.example.myemail.presentation.feature.email_list.EmailListScreenModel
-// import com.example.myemail.presentation.feature.email_detail.EmailDetailScreenModel
-// import com.example.myemail.presentation.feature.compose_email.ComposeEmailScreenModel
+// import com.lonelymeko.myemail.presentation.feature.email_list.EmailListScreenModel
+ import com.lonelymeko.myemail.presentation.feature.email_detail.EmailDetailScreenModel
+// import com.lonelymeko.myemail.presentation.feature.compose_email.ComposeEmailScreenModel
 
 import com.russhwolf.settings.Settings // multiplatform-settings 接口
 import kotlinx.coroutines.Dispatchers
@@ -219,7 +219,6 @@ val screenModelModule = module {
                     (forward.bodyPlainText ?: forward.bodyHtml ?: "") // 转发通常包含完整内容
         }
 
-
         ComposeEmailScreenModel(
             sendEmailUseCase = get(),
             getActiveAccountFlowUseCase = get(),
@@ -228,8 +227,17 @@ val screenModelModule = module {
             initialBody = initialBody
         )
     }
-    // 当你创建 EmailListScreenModel 等时，在这里添加它们的工厂定义
-    // factory { params -> EmailListScreenModel(get(), get(), params.getOrNull(), params.getOrNull()) }
-    // factory { params -> EmailDetailScreenModel(get(), get(), params.get()) }
-    // factory { params -> ComposeEmailScreenModel(get(), params.getOrNull()) }
+
+    // --- 新增 EmailDetailScreenModel 的工厂定义 ---
+    factory { params: ParametersHolder ->
+        EmailDetailScreenModel(
+            account = params.get<AccountInfo>(0),           // 参数1: AccountInfo
+            folderName = params.get<String>(1),          // 参数2: String (folderName)
+            messageServerId = params.get<String>(2),     // 参数3: String (messageServerId)
+            getEmailDetailsUseCase = get(),              // 依赖注入
+            markEmailFlagsUseCase = get(),               // 依赖注入
+            deleteEmailUseCase = get()                   // 依赖注入
+        )
+    }
+//     factory { params -> ComposeEmailScreenModel(get(), params.getOrNull()!!) }
 }
