@@ -111,6 +111,15 @@ MyEmail 是一个使用 Kotlin Multiplatform (KMP) 构建的简单邮件客户�
 *   **本地化/国际化 (i18n)**。
 *   **单元测试和集成测试**。
 
+## 使用截图
+![image](https://github.com/user-attachments/assets/c6140f8d-0dde-4112-a9e6-028489ae1a07)
+
+![image](https://github.com/user-attachments/assets/24234d02-ae6a-443b-babb-b0a4d104b125)
+
+![image](https://github.com/user-attachments/assets/41296109-5569-41e4-959d-f51ea94d47ad)
+
+![image](https://github.com/user-attachments/assets/d2ad17ee-5b02-4478-a42e-ec4180482b14)
+
 ## 贡献
 
 欢迎提交 Pull Requests 或 Issues 来改进这个项目！
