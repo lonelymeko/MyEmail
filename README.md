@@ -1,6 +1,9 @@
-# MyEmail KMP - 一个简单的跨平台邮件客户端
+# MyEmail - 一个简单的跨平台邮件客户端
 
-MyEmail KMP 是一个使用 Kotlin Multiplatform (KMP) 构建的简单邮件客户端示例项目。它旨在演示如何在 KMP 架构下实现邮件收发功能，支持 Android 和 Desktop (JVM) 平台，并使用 Jetpack Compose for UI。
+MyEmail 是一个使用 Kotlin Multiplatform (KMP) 构建的简单邮件客户端示例项目。它旨在演示如何在 KMP 架构下实现邮件收发功能，支持 Android 和 Desktop (JVM) 平台，并使用 Jetpack Compose for UI。
+
+## 快速使用
+   *   在release里下载即可，目前只打包好了Windows端，其他平台待完善（TODO）
 
 ## 特性 (目标)
 
@@ -67,15 +70,14 @@ MyEmail KMP 是一个使用 Kotlin Multiplatform (KMP) 构建的简单邮件客�
 
 1.  克隆仓库:
     ```bash
-    git clone https://github.com/your-username/MyEmailKMP.git # 替换为你的仓库地址
-    cd MyEmailKMP
+    git clone https://github.com/lonelymeko/MyEmail.git # 替换为你的仓库地址
+    cd MyEmail
     ```
 2.  使用 Android Studio 或 IntelliJ IDEA 打开项目。
 3.  等待 Gradle 同步完成。
 4.  选择目标平台并运行：
     *   **Android**: 选择 `composeApp` (如果它配置为应用) 或你的 `androidApp` 模块，然后选择一个模拟器或连接的设备，点击 "Run"。
     *   **Desktop**: 在 Gradle 任务中找到 `composeApp` -> `Tasks` -> `compose desktop` -> `run` (或者它可能被命名为 `desktopRun` 或类似)，双击运行。或者，如果配置了运行配置，直接运行。
-    *   **WasmJs**: (如果配置) 通常通过 Gradle 任务 `wasmJsBrowserRun` 或类似任务在浏览器中运行。
 
 ### 测试 (本地 `main` 方法)
 
@@ -112,19 +114,3 @@ MyEmail KMP 是一个使用 Kotlin Multiplatform (KMP) 构建的简单邮件客�
 ## 贡献
 
 欢迎提交 Pull Requests 或 Issues 来改进这个项目！
-
-## 许可证
-
-本项目采用 [MIT 许可证](LICENSE) (如果决定使用的话，添加一个 LICENSE 文件)。
-
----
-
-**请根据你的实际情况进行修改：**
-
-*   替换 `your-username/MyEmailKMP.git` 为你的实际 GitHub 仓库地址。
-*   如果你使用了特定的库版本或有独特的配置，可以在 "技术栈" 或 "构建步骤" 中说明。
-*   随着项目的进展，更新 "特性" 和 "待办事项" 列表。
-*   如果你决定了项目的许可证，添加一个 `LICENSE` 文件并在 README 中链接它。
-*   添加项目截图会更吸引人。
-
-这个 README 提供了一个不错的起点，希望能帮助你向他人介绍你的项目！
